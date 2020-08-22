@@ -1,0 +1,25 @@
+#!/bin/bash
+
+if (( $# == 0 )); then
+	echo "Convert ini syntax to Windows Command Batchfile syntax."
+	echo
+	echo "Usage:"
+	echo "  c:\> cvt_ini.bat scratcher_creds_for_prod.ini > scratcher_creds.bat"
+	echo "  c:\> scratcher_creds.bat
+	echo
+	echo "  Batch files can't do dynamic eval so you have to write it to a file."
+	echo
+	exit 1
+fi
+
+infile=$1
+
+cat $infile | while read -r line; do
+	# remove everything on line after first hash (#)
+	stripped="${line%%#*}"
+	[[ -z "$stripped" ]] && continue
+	
+	# use eval to properly evaluate quoted assignment and then print it back out as cmd syntax.
+	lvalue="${stripped%%=*}"
+	echo "set $lvalue=$(eval "$stripped"; eval "echo \$$lvalue")"
+done | sed 's/\^/^^/g'    # escapes ^ as ^^

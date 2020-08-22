@@ -1,0 +1,8 @@
+#!/bin/bash
+
+if (( $# == 0 )); then
+	exit 1
+fi
+
+(ls -l --time-style=+%Y%m%d prefix-*.log | cut -d' ' -f 6-; echo "20200500 DELETE") | sort -r \
+	| grep -A9999 -- DELETE | grep -v DELETE | cut -d' ' -f2 | xargs rm
