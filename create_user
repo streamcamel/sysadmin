@@ -7,6 +7,8 @@
 # scratcher_creds_for_test
 # scratcher_creds_for_prod
 
+mydir=${BASH_SOURCE[0]}
+
 SHOWHELP=0
 PRODACCT=test
 POSITIONAL=()
@@ -51,7 +53,7 @@ set -ex
 new_user=$1
 new_user_home=/home/$new_user
 authorized_keys=${PATH_TO_AUTHORIZED_KEYS:-~/.ssh/authorized_keys}
-scratcher_creds=${PATH_TO_SCRATCHER_CREDS:-~/scratcher_creds_for_$PRODACCT.sh}
+scratcher_creds=${PATH_TO_SCRATCHER_CREDS:-$mydir/scratcher_creds_for_$PRODACCT.sh}
 
 # use --gecos to bypass the silly prompts for full name, room number, etc
 
