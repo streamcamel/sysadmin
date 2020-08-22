@@ -1,0 +1,183 @@
+#!/bin/bash
+
+mydir=$(dirname ${BASH_SOURCE[0]})
+
+if [[ -f ~/scratcher_creds.sh ]]; then
+    source ~/scratcher_creds.sh
+else
+    >&2 echo "warning: user env ~/scratcher_creds.sh not found."
+fi
+
+deployment_dir=${SCRATCHER_DEPLOYMENT_DIR:-~/g/scratcher}
+branch=${SCRATCHER_GIT_BRANCH:-origin/master}
+git_url=${SCRATCHER_GIT_URL:-"https://github.com/robinlavallee/scratcher"}
+cron_task=$SCRATCHER_CRON_TASK
+
+POSITIONAL=( )
+CLI_ERROR=( )
+for item; do
+    rvalue="${item#*=}"
+    [[ "$item" == --autoslot ]] && AUTOSLOT=1           && continue
+    [[ "$item" == --help     ]] && SHOWHELP=1           && continue
+    [[ "$item" == --force    ]] && FORCE=1              && continue
+    [[ "$item" == --branch=* ]] && branch="$rvalue"     && continue
+    [[ "$item" == --task=*   ]] && cron_task="$rvalue"  && continue
+    [[ "$item" == --url=*    ]] && git_url="$rvalue"    && continue
+
+    [[ "$item" == --*        ]] && {
+        CLI_ERROR+=( "$item" )
+        continue
+    }
+
+    POSITIONAL+=( "$item" )
+done
+
+set -- "${POSITIONAL[@]}"
+
+if (( SHOWHELP )); then
+    echo "usage"
+    echo "  $ deploy.sh [--autoslot] [--force] [--branch=name] [--task=name] {destdir}"
+    echo
+    echo "positional"
+    echo "  destdir             specifies destination dir by name to clone/checkout and activate"
+    echo "                      destdir is ignored when specifying --autoslot"
+    echo
+    echo "options"
+    echo "  --autoslot          automatically pick a slot name using random number generator"
+    echo "  --force             force pull/update existing git dir"
+    echo "  --branch=rvalue     specify a git branch for deployment (default = master)"
+    echo "  --task=rvalue       specify a task name for cron activation"
+    echo "  --url=rvalue        URL to git repository to clone"
+    echo
+    echo "environment"
+    echo "  SCRATCHER_DEPLOYMENT_DIR   base dir used for deployment (default = ~/g/scratcher)"
+    echo "  SCRATCHER_GIT_BRANCH       git branch checked out for deployment"
+    echo "  SCRATCHER_GIT_URL          URL to git repository to clone"
+    echo "  SCRATCHER_CRON_TASK        task name(s) to activate in cron, delimited by space"
+    echo
+    echo "  ~/scratcher_creds.sh is loaded when present and should be the preferred method to"
+    echo "                       set up default environment variables for the current user."
+    echo
+    echo "cron tasks can be obtained from scratcher crontab_gen.sh and may vary by scratcher version."
+    echo
+    exit 0
+fi
+
+if [[ -n "${CLI_ERROR[@]}" ]]; then
+    >&2 echo "warning: unrecognized options: ${CLI_ERROR[@]}"
+    # do not error on unrecognized options, in my experience it is more useful to warn and
+    # continue than to hard-fail, especially for CI which may run code from various revisions
+    # in present or fucute.
+    #exit 1
+fi
+
+if [[ -z "$cron_task" ]]; then 
+    >&2 echo "error: cron task name has not been specified."
+    >&2 echo " > task can be specified by env SCRATCHER_CRON_TASK or on CLI via --task=name"
+    exit 1
+fi
+
+if (( AUTOSLOT )); then
+    deploy_slot=$deployment_dir/$(openssl rand -hex 4)
+elif (( $# > 1 )); then
+    >&2 echo "deployment error: too many arguments for command, see --help for usage"
+    exit 1
+elif (( $# < 1 )); then
+    >&2 echo "deployment error: too few arguments for command, see --help for usage"
+    exit 1
+else
+    deploy_slot="$1"
+fi
+
+# make sure the selected deployment slot isn't the active deployment.
+# the crontab is the gosphel for this information:
+while crontab -l | grep --quiet -- "$deploy_slot"; do
+    if (( AUTOSLOT )); then
+        deploy_slot=$(openssl rand -hex 4)
+        continue
+    elif (( FORCE == 0 )); then
+        >&2 echo "deployment error: slot '$deploy_slot' is currently active." 
+        >&2 echo " > specify --force to override and force swap." 
+        exit 1
+    fi
+    break
+done
+
+# only honor deployment_dir if the user provided path is not explicitly specified in relative terms.
+if [[ "$deploy_slot" != ./* && "$deploy_slot" != /* ]]; then
+    clone_dest_dir=$(realpath $deployment_dir/$deploy_slot)
+else
+    clone_dest_dir=$(realpath $deploy_slot)
+fi
+
+echo "deployment dir: $clone_dest_dir"
+
+# we use rm -rf in this script, which makes it exra important to verify we have a reasonably well-formed path
+[[ -z "$deploy_slot" || -z "$clone_dest_dir" || "$clone_dest_dir" == '/' || "$clone_dest_dir" == '.' ]] && {
+    >&2 echo "assertion failure, deployment dir is invalid. Refusing to continue operation."
+    exit 1
+}
+
+if [[ -e "$clone_dest_dir/.git" ]]; then
+    if (( FORCE == 0 )); then
+        >&2 echo "deployment error: clone destination directory exists: $(realpath $clone_dest_dir)" 
+        >&2 echo " > specify --force to ignore this error and perform git pull operation." 
+    fi
+    ( cd $clone_dest_dir; git pull --rebase ) || exit 1
+else
+    mkdir -p $clone_dest_dir
+    git clone --recurse-submodules "$git_url" $clone_dest_dir || {
+        >&2 echo "clone operation error, cleaning up..."
+        set -x
+        rm -rf $clone_dest_dir
+        exit 1
+    }
+fi
+
+( cd $clone_dest_dir; git checkout $branch) || exit 1
+
+python_deploy_step() {
+    init_python_venv() {
+        venv_dir=$clone_dest_dir/.py_venv
+        python3 -m venv $clone_dest_dir/$venv_dir
+        source $clone_dest_dir/$venv_dir/activate
+    }
+
+    # this is not robust - pip will swap modules currently in use by active cron job, which could
+    # cause pip to fail (sharing error) or cron to fail (ugh). Solution is to use Docker. Or to not
+    # use python. We have a swtich to GoLang on the roadmap, since the chance of failure here is low,
+    # we should be OK until then... --jstine 
+
+    # Alternative: could use python venv to install modules into a subdir of the git clone itself, and then
+    # we need to provide a local python redirection/thunk script to 'activate' the local venv.
+    # (INCOMPLETE, depends on changing shebangs in all directly runnable python scripts! Also, major upgrades
+    # tovenv have occured since 3.5 running on our bitnami, so strongly recommended if using this, to wait
+    # until we get a new modern system to run it on).
+
+    #init_python_venv
+    pip3 install -r $clone_dest_dir/pip-reqs.txt || {
+        >&2 echo "pip error, giving up without cleanup..."
+        exit 1
+    }
+}
+
+# if we remove all python scripts someday then we should remove pip-reqs.txt and this script will
+# automatigally adapt and skip python deployment steps. (clever!)
+[[ -f "$clone_dest_dir/pip-reqs.txt" ]] && python_deploy_step
+
+# activate new crontab
+$clone_dest_dir/crontab_gen.sh $SCRATCHER_CRON_TASK | crontab - || exit 1
+
+# crontab is the gosphel for if our job actually succeeded.
+if ! crontab -l | grep --quiet -- "$clone_dest_dir"; then
+    >&2 echo "deployment error: crontab activation verification check failed."
+    >&2 echo " > current crontab does not contain expected deployment dir"
+    exit 1
+fi
+
+# for autoslot mode, create/update a human readable shortcut (not really used, feels robust tho)
+if (( AUTOSLOT )); then
+        rm $deployment_dir/active
+        ln -s --force $clone_dest_dir $deployment_dir/active
+    fi
+fi

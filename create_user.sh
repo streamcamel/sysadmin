@@ -1,0 +1,84 @@
+#!/bin/bash
+
+# new user sample name might be 'streams_getter' or 'scratch_10m' or 'scratch_nightly'
+
+# default to test creds for scratcher. User must explicitly provide path to production creds
+# or request production reds using --prod option.
+# scratcher_creds_for_test
+# scratcher_creds_for_prod
+
+SHOWHELP=0
+PRODACCT=test
+POSITIONAL=()
+end_of_options=0
+while (( $# )); do
+	if (( end_of_options )); then
+		POSITIONAL+=("$1")
+		shift
+		continue
+	fi
+	
+	case "$1" in
+		--help | -h) 			SHOWHELP=1 ;;
+		--prod)				    PRODACCT=prod ;;
+		--)          			end_of_options=1 ;;
+		-*)          			>&2 echo "error: unknown option: $1"; CLI_ERROR=1 ;;
+		*)           			POSITIONAL+=("$1") ;;
+	esac
+	shift
+done
+
+set -- "${POSITIONAL[@]}"
+##### END positional parameter handler #####
+
+if (( SHOWHELP )); then
+    echo "Creates user and initializes for test or production usage."
+    echo
+    echo "options:"
+    echo "  --prod            creates user suitable for production environment"
+	exit 0
+fi
+
+if (( $# == 0 )) || [[ -z "$1" ]]; then
+    >&2 echo "error: valid user name parameter is required."
+    exit 1
+fi
+
+(( CLI_ERROR )) && exit 1
+
+set -ex
+
+new_user=$1
+new_user_home=/home/$new_user
+authorized_keys=${PATH_TO_AUTHORIZED_KEYS:-~/.ssh/authorized_keys}
+scratcher_creds=${PATH_TO_SCRATCHER_CREDS:-~/scratcher_creds_for_$PRODACCT.sh}
+
+# use --gecos to bypass the silly prompts for full name, room number, etc
+
+sudo adduser $new_user --disabled-password --gecos "$new_user"
+sudo mkdir -p  $new_user_home/.ssh
+sudo chmod 700 $new_user_home/.ssh
+sudo cp $authorized_keys $new_user_home/.ssh/authorized_keys
+sudo chown -R $new_user:$new_user $new_user_home/.ssh
+sudo chmod 600 $new_user_home/.ssh/authorized_keys
+sudo cp $scratcher_creds /home/$new_user/scratcher_creds.sh
+
+sudo mkdir -p /var/log/$new_user
+sudo chown -R $new_user:$new_user /var/log/$new_user
+
+echo "OPERATION COMPLETED SUCCESSFULLY"
+
+# run inside subshell scope to allow facilitation of sudo su -
+# TODO: this should be moved to a separate script. It should be run as part of 
+#       standard CI clone deployment event(s).
+clone_and_pip() {(
+    local new_user=$1
+    local clone_dest_dir=~/g/scratcher/1
+
+    sudo su - $new_user
+    mkdir -p $clone_dest_dir
+    git clone --recurse-submodules https://github.com/robinlavallee/scratcher $clone_dest_dir
+    pip3 install -r $clone_dest_dir/pip-reqs.txt
+)}
+
+#clone_and_pip $new_user

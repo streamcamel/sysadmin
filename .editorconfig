@@ -1,0 +1,16 @@
+# VSCode users: you must install an extension for .editorconfig to be honored.
+
+[*]
+indent_style = space
+indent_size = 4
+
+# all files used on unix/msys, let's force LF as much as possible
+# (git will catch unhandled LF on checkin)
+end_of_line = lf
+
+# unix tools prefer this
+insert_final_newline = true
+
+# UTF8 should always be default since 2009, how some things default elsewhere in 2020
+# is a mystery of humanity
+charset = utf-8
