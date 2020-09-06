@@ -69,18 +69,3 @@ sudo mkdir -p /var/log/$new_user
 sudo chown -R $new_user:$new_user /var/log/$new_user
 
 echo "OPERATION COMPLETED SUCCESSFULLY"
-
-# run inside subshell scope to allow facilitation of sudo su -
-# TODO: this should be moved to a separate script. It should be run as part of 
-#       standard CI clone deployment event(s).
-clone_and_pip() {(
-    local new_user=$1
-    local clone_dest_dir=~/g/scratcher/1
-
-    sudo su - $new_user
-    mkdir -p $clone_dest_dir
-    git clone --recurse-submodules https://github.com/robinlavallee/scratcher $clone_dest_dir
-    pip3 install -r $clone_dest_dir/pip-reqs.txt
-)}
-
-#clone_and_pip $new_user

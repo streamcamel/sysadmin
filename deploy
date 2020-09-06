@@ -10,7 +10,7 @@ fi
 
 deployment_dir=${SCRATCHER_DEPLOYMENT_DIR:-~/g/scratcher}
 branch=${SCRATCHER_GIT_BRANCH:-origin/master}
-git_url=${SCRATCHER_GIT_URL:-"https://github.com/robinlavallee/scratcher"}
+git_url=${SCRATCHER_GIT_URL:-"https://github.com/streamcamel/scratcher"}
 cron_task=$SCRATCHER_CRON_TASK
 
 POSITIONAL=( )
