@@ -62,14 +62,20 @@ cp_set_owner() {
 	sudo chown $new_user:$new_user $2
 }
 
-sudo adduser $new_user --disabled-password --gecos "$new_user"
+if getent passwd | cut -d: -f1 | grep -W sc_test > /dev/null; then
+    echo "user already exists, skipping adduser..."
+else
+    sudo adduser $new_user --disabled-password --gecos "$new_user" || :
+fi
+
 sudo mkdir -p                           $new_user_home/.ssh
 sudo chmod 700                          $new_user_home/.ssh
 sudo cp $authorized_keys                $new_user_home/.ssh/authorized_keys
 sudo cp $mydir/id_github_readonly		$new_user_home/.ssh	
 sudo cp $mydir/id_github_readonly.pub 	$new_user_home/.ssh
-sudo chown -R $new_user:$new_user       $new_user_home/.ssh
+
 sudo chmod 600                          $new_user_home/.ssh/authorized_keys
+sudo chown -R $new_user:$new_user       $new_user_home/.ssh
 
 cp_set_owner $scratcher_creds           $new_user_home/scratcher_creds.ini
 
