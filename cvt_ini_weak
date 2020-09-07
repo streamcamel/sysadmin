@@ -1,0 +1,24 @@
+#!/bin/bash
+
+if (( $# == 0 )); then
+	echo "Convert ini syntax to BASH weak-assignment syntax."
+	echo "Resulting settings will not override existing settings when sourced."
+	echo
+	echo "Usage:"
+	echo "  source <(cvt_ini_weak scratcher_creds_for_prod.ini)"
+	echo
+	echo "Bash source command does not support stdin, so pipe substitution is used"
+	echo "as a workaround)"
+	exit 1
+fi
+
+infile=$1
+
+cat $infile | while read -r line; do
+	# remove everything on line after first hash (#)
+	stripped="${line%%#*}"
+	[[ -z "$stripped" ]] && continue
+	lvalue="${stripped%%=*}"
+	rvalue="${stripped##*=}"
+	printf 'export %s=${%s:-%s}\n' "$lvalue" "$lvalue" "$rvalue"
+done

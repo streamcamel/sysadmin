@@ -2,15 +2,14 @@
 
 mydir=$(dirname ${BASH_SOURCE[0]})
 
-if [[ -f ~/scratcher_creds.sh ]]; then
-    source ~/scratcher_creds.sh
-else
-    >&2 echo "warning: user env ~/scratcher_creds.sh not found."
-fi
+# update path so we can use local scripts without ./ prefix
+export PATH="$scriptdir:$PATH"
+
+source <(cvt_ini_weak ~/deployment.ini)
 
 deployment_dir=${SCRATCHER_DEPLOYMENT_DIR:-~/g/scratcher}
 branch=${SCRATCHER_GIT_BRANCH:-origin/master}
-git_url=${SCRATCHER_GIT_URL:-"https://github.com/streamcamel/scratcher"}
+git_url=${SCRATCHER_GIT_URL:-"ssh://git@github.com/streamcamel/scratcher"}
 cron_task=$SCRATCHER_CRON_TASK
 
 POSITIONAL=( )
@@ -55,12 +54,26 @@ if (( SHOWHELP )); then
     echo "  SCRATCHER_GIT_URL          URL to git repository to clone"
     echo "  SCRATCHER_CRON_TASK        task name(s) to activate in cron, delimited by space"
     echo
-    echo "  ~/scratcher_creds.sh is loaded when present and should be the preferred method to"
-    echo "                       set up default environment variables for the current user."
+    echo "  ~/deployment.ini  is loaded when present and should be the preferred method to"
+    echo "                    set up default environment variables for the current user."
     echo
     echo "cron tasks can be obtained from scratcher crontab_gen.sh and may vary by scratcher version."
     echo
     exit 0
+fi
+
+# If the job was not explicitly configured, then auto-detect the job scope of the user based on the user name.
+user=$(whoami)
+if [[ -z "$cron_task" ]]; then
+    if [[ "$user" == *nightly* ]]; then
+        echo "Assuming 'nightly' cron job based on user name '$user'"
+        cron_task=nightly
+    fi
+
+    if [[ "$user" == *streams* ]]; then
+        echo "Assuming 'streams/10min' cron job based on user name '$user'"
+        cron_task=10min
+    fi
 fi
 
 if [[ -n "${CLI_ERROR[@]}" ]]; then
@@ -72,7 +85,7 @@ if [[ -n "${CLI_ERROR[@]}" ]]; then
 fi
 
 if [[ -z "$cron_task" ]]; then 
-    >&2 echo "error: cron task name has not been specified."
+    >&2 echo "error: cron task name has not been specified and could not be determined."
     >&2 echo " > task can be specified by env SCRATCHER_CRON_TASK or on CLI via --task=name"
     exit 1
 fi
