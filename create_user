@@ -62,10 +62,10 @@ cp_set_owner() {
 	sudo chown $new_user:$new_user $2
 }
 
-if getent passwd | cut -d: -f1 | grep -W sc_test > /dev/null; then
-    echo "user already exists, skipping adduser..."
-else
+if getent passwd | cut -d: -f1 | grep -w sc_test > /dev/null; then
     sudo adduser $new_user --disabled-password --gecos "$new_user" || :
+else
+    echo "user already exists, skipping adduser..."
 fi
 
 sudo mkdir -p                           $new_user_home/.ssh
