@@ -7,7 +7,7 @@
 # scratcher_creds_for_test
 # scratcher_creds_for_prod
 
-mydir=${BASH_SOURCE[0]}
+mydir=$(dirname "{BASH_SOURCE[0]}")
 
 SHOWHELP=0
 PRODACCT=test
