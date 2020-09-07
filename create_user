@@ -53,17 +53,25 @@ set -ex
 new_user=$1
 new_user_home=/home/$new_user
 authorized_keys=${PATH_TO_AUTHORIZED_KEYS:-~/.ssh/authorized_keys}
-scratcher_creds=${PATH_TO_SCRATCHER_CREDS:-$mydir/scratcher_creds_for_$PRODACCT.sh}
+scratcher_creds=${PATH_TO_SCRATCHER_CREDS:-$mydir/scratcher_creds_for_$PRODACCT.ini}
 
 # use --gecos to bypass the silly prompts for full name, room number, etc
 
+cp_set_owner() {
+	sudo cp $1 $2
+	sudo chown $new_user:$new_user $2
+}
+
 sudo adduser $new_user --disabled-password --gecos "$new_user"
-sudo mkdir -p  $new_user_home/.ssh
-sudo chmod 700 $new_user_home/.ssh
-sudo cp $authorized_keys $new_user_home/.ssh/authorized_keys
-sudo chown -R $new_user:$new_user $new_user_home/.ssh
-sudo chmod 600 $new_user_home/.ssh/authorized_keys
-sudo cp $scratcher_creds /home/$new_user/scratcher_creds.sh
+sudo mkdir -p                           $new_user_home/.ssh
+sudo chmod 700                          $new_user_home/.ssh
+sudo cp $authorized_keys                $new_user_home/.ssh/authorized_keys
+sudo cp $mydir/id_github_readonly		$new_user_home/.ssh	
+sudo cp $mydir/id_github_readonly.pub 	$new_user_home/.ssh
+sudo chown -R $new_user:$new_user       $new_user_home/.ssh
+sudo chmod 600                          $new_user_home/.ssh/authorized_keys
+
+cp_set_owner $scratcher_creds           $new_user_home/scratcher_creds.ini
 
 sudo mkdir -p /var/log/$new_user
 sudo chown -R $new_user:$new_user /var/log/$new_user
